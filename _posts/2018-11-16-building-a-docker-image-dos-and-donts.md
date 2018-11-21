@@ -30,7 +30,7 @@ followed by an explanation why. Don't worry, we're here to fix that.
 
 There are, unfortunatelly, sever down sides to the approach depicted above:
 
-* Running heterogeous processes inside an isolated environment (a docker container) may result in performance issues,
+* Running heterogenous processes inside an isolated environment (a docker container) may result in performance issues,
   with the processes sharing a single execution context. This is not a design flaw - you are meant to scale containers,
   not processes. Worker sub-processes and threads are fine, but you should scale your app by adding more containers
   instead of forking the main process. This is good for reliability of your service as well.
@@ -71,17 +71,21 @@ the same worker node! Is everything lost?
 Luckily, no. These components need to be wired over the network, the "hard" part is service discovery. Unfortunately
 there is no easy "one size fits all" solution here, so we'll provide at least some examples:
 
-* If you're running a [docker swarm](https://docs.docker.com/engine/swarm/) cloud, you can describe and deploy your
+* If you're running a [Socker Swarm](https://docs.docker.com/engine/swarm/) cloud, you can describe and deploy your
   app using a [docker-compose](https://docs.docker.com/compose/) file.
 * If you are deploying to a
-  [marathon](https://mesosphere.github.io/marathon/)+[mesos](https://mesos.apache.org/) cloud, you can use a
+  [Marathon](https://mesosphere.github.io/marathon/)+[Mesos](https://mesos.apache.org/) cloud, you can use a
   [proxy](https://mesosphere.github.io/marathon/docs/service-discovery-load-balancing.html) that will utilize
   marathon's service discovery in the background and transparently forward all traffic to the running containers.
-* Are you a [kubernetes](https://kubernetes.io/) user? Well, there are several options. A naive approach would be to
+* Are you a [Kubernetes](https://kubernetes.io/) user? Well, there are several options. A naive approach would be to
   deploy all containers as a single pod, however, that would suffer from scaling issues described above. A better
   option is to utilize the kubernetes'
   [service declarations](https://kubernetes.io/docs/concepts/services-networking/service/).
-* TODO: openshift
+* For [OpenShift](https://www.openshift.com/) users this are pretty similar to the Kubernetes' users since OpenShift is
+  built on top of Kubernetes - use services to set up communication between the containers of your application. Note
+  that while services are great for establishing communication pathways between your containers, it is preferable to
+  use openshift's [routes](https://docs.openshift.com/container-platform/3.11/dev_guide/routes.html) to establish
+  communication with the outside world.
 
 ## Choosing your base image
 
@@ -130,4 +134,4 @@ RUN bash /src/prepare.sh && perl build-deps.pl && ...
 ...
 ```
 
-The lesson here is simple: do not do the work someone already has done for you.
+The lesson here is simple: do not do the work someone has already done for you.
