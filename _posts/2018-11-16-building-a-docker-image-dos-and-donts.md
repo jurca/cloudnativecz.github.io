@@ -112,7 +112,7 @@ There are several issues with this approach:
   more layers your images share with other images, the less has the docker to download during image fetching).
 * By installing all these extra stuff, you increase the size your image considerably. Are you sure you need all of this
   to run your image, or just to build your image? If you only need a lot of these dependencies only build your image,
-  consider using multi-staged builds (see below).
+  consider using multi-staged builds (see **Optimizing the image layers** below).
 
 To use the dockerfile fragment above as an example, let's improve the situation a little bit:
 
@@ -135,3 +135,52 @@ RUN bash /src/prepare.sh && perl build-deps.pl && ...
 ```
 
 The lesson here is simple: do not do the work someone has already done for you.
+
+## Optimizing the image layers
+
+The simplest way of packaging a component of your app is building it in the same docker image as the one used for
+running it:
+
+```Dockerfile
+FROM ...
+RUN apt update && apt install ...
+RUN /opt/build.sh
+CMD /opt/start.sh
+ENV TLD=com
+ENV ENVIRONMENT=production
+```
+
+While this approach is indeed simple in its nature, it results in images with lots of unnecessary bloat, especially
+since the amount of dependencies used to build a component is usually larger than the amount of dependencies required
+to run a built component.
+
+Of course, we may slighty reduce the number of layers by merging some lines in the Dockerfile, e.g.:
+
+```Dockerfile
+FROM ...
+
+RUN apt update && apt install ... && /opt/build.sh
+CMD /opt/start.sh
+```
+
+This, however, is not good enough, simply because we can do a lot better. What we can do is use one image to build our
+app and another to host the built app without the sources or build dependencies. The easiest way to do this is using
+a [multi-stage docker build](https://docs.docker.com/develop/develop-images/multistage-build/):
+
+```Dockerfile
+FROM node:10 as builder
+WORKDIR /app
+COPY package.json package-lock.json /app/
+RUN npm ci
+RUN npm run build
+
+FROM NODE:10-alpine
+WORKDIR /app
+CMD node /app/dist/app.js
+RUN NODE_ENV=production npm ci
+COPY --from=builder /app/dist/ /app/
+```
+
+TODO: common base image for multi-stage build
+
+TODO: note about benefits of having more RUN layers for the build image
