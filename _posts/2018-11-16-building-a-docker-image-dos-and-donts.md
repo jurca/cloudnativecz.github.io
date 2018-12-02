@@ -199,9 +199,10 @@ COPY --from=builder /app/dist/ /app/dist/
 ```
 
 When using multi-stage docker builds, the last image will be the result of the `docker build` command and will be
-tagged by the tag specified in the command's options. This, however, does not stop us from creating other images for
-other uses (e.g. running end-to-end tests) after the runtime image has been created. All we have to do is "recreate"
-our runtime image by using the previously built runtime image as a base image:
+tagged by the tag specified in the command's options (unless the [`--target`]() option is used, but that stops the
+build process after the specified target). This, however, does not stop us from creating other images for other uses
+(e.g. running end-to-end tests) after the runtime image has been created. All we have to do is "recreate" our runtime
+image by using the previously built runtime image as a base image:
 
 ```Dockerfile
 ...
@@ -247,3 +248,67 @@ To delete all the untagged images, regardless how old or fresh they are, you may
 ```bash
 docker rmi $(docker images -f “dangling=true” -q)
 ```
+
+## Removing unnecessary layers of your docker image
+
+Docker provides us with a plethora of Dockerfile directives that are used while building your app, some are used to
+include files into the image, some run commands, some modify the runtime configuration, while other provide various
+meta-data.
+
+The thing is that every directive in your Dockerfile will add an additional layer to the resulting image. While modern
+docker image filesystem drivers, such as overlay2, handle layers a lot better than their predecessors, it is preferable
+to keep the number of layers of your resulting image to a minimum.
+
+Firstly, take a better look at the environment you deploy your image to. It is usually reasonable to assume that it
+allows you to maintan a persistent configuration for running your docker image that is kept and applied with every new
+version of your image as well. Such configuration overrides the defaults specified by the Dockerfile directives used to
+specify runtime configuration:
+
+* [`CMD`](https://docs.docker.com/engine/reference/builder/#cmd) - this specifies the default executable run when
+  starting a container based on your image.
+* [`EXPOSE`]() - when running a docker container, the platform may choose to expose any container's ports it chooses,
+  or none at all. No ports are exposed by default, even if specified in an `EXPOSE` directive.
+* [`ENV`]() - this is used to configure the ENV variables available after the `ENV` directive in the subsequent `RUN`
+  directives or during the lifetime of a container created from the built image. While these may be useful during build
+  time, the runtime ENV variables can be managed by the platform running the containers, ergo the `ENV` directive does
+  not have to be used outside the builder image (see [multi-stage docker builds0]()).
+* [`ENTRYPOINT`](https://docs.docker.com/engine/reference/builder/#entrypoint) - this, along with the `CMD` directive,
+  specifies the default executable run when starting a container based on your image (see the docs). Since entrypoints
+  are overridable, just as start commands, you may not need this.
+* [`VOLUME`](https://docs.docker.com/engine/reference/builder/#volume) - Unless you want a certain directory in your
+  container to be a volume regardless of the options passed to the `docker run` command, you do not need this. Any
+  directory within a container can be mounted to the host's filesystem regardless of being specified in a `VOLUME`
+  directive.
+* [`USER`](https://docs.docker.com/engine/reference/builder/#user) - while it is preferrable not to run your docker
+  container processes as root for security reasons, and preferably run the processes as nobody, this can be overridden
+  when starting a container.
+* [`STOPSIGNAL`](https://docs.docker.com/engine/reference/builder/#stopsignal) - docker will send your app a SIGTERM
+  to the root process when `docker stop` is executed. Why not just use it?
+* [`HEALTHCHECK`]() - this directive allows to specify a command to execute as a healtcheck and use the command's exit
+  status as healthcheck result. It might be worth it to look into healthcheck options provided by your deployment
+  platform as it most likely offers more flexible/convenient options.
+* [`SHELL`]() - unless you are building an image you will use locally and not in the cloud, there is little use for
+  this that acutally adds value.
+
+There are also a couple of metadata diretives you may want to reconsider using:
+
+* [`LABEL`](https://docs.docker.com/engine/reference/builder/#label) - are you sure that the image tag, which can
+  reflect a git tag is not enough? The git tag may contain any extra information in its message (which **can** be
+  multi-line), and tools such as GitHub and GitLab allow for editable "release notes" accompanying the tags.
+* [`MAINTAINER`](https://docs.docker.com/engine/reference/builder/#maintainer-deprecated) - this has been deprecated in
+  favor of `LABEL` anyway.
+
+And finally, there are directives that are used to configure the build process:
+
+* [`ARG`]() - this is used to configure the ENV variables during the build process. While useful for builder images
+  (see [multi-stage docker builds]()), do not use it for runtime images - just the ENV variables using the deployment
+  platform.
+
+All these directives may be tempting to use since they provide documentation value, however, such documentation may be
+kept elsewhere. If you can ommit a directive listed in this chapter in favor of a runtime configuration maintained by
+the platform you deploy to, you probably should.
+
+In case that there is a good reason (and value) in using any of these directives in your Dockerfile (e.g. a container
+you run locally on your machine for development), specify them at the start or your Dockerfile right after the `FROM`
+directive, since these usually change the least often, and combine to single use them when possible (see the supported
+syntaxes for each directive).
