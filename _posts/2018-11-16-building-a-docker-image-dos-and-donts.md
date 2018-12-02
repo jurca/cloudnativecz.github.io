@@ -312,3 +312,11 @@ In case that there is a good reason (and value) in using any of these directives
 you run locally on your machine for development), specify them at the start or your Dockerfile right after the `FROM`
 directive, since these usually change the least often, and combine to single use them when possible (see the supported
 syntaxes for each directive).
+
+## Testing your application
+
+Our advice here is simple: test in CI, do not test in production. Fail the CI pipeline if tests fail. Run simple tests
+first (e.g. unit tests), complex tests later (e.g. integration tests) and end-to-end tests as last. Also, run all the
+tests that do not require you to actually build your application before you build your application (fail early). And
+finally: do not include the test results in the built app, leave them in the builder image
+(see [multi-stage docker builds]()).
