@@ -114,7 +114,7 @@ There are several issues with this approach:
   to run your image, or just to build your image? If you only need a lot of these dependencies only build your image,
   consider using multi-staged builds (see **Optimizing the image layers** below).
 
-To use the dockerfile fragment above as an example, let's improve the situation a little bit:
+To use the Dockerfile fragment above as an example, let's improve the situation a little bit:
 
 ```Dockerfile
 FROM golang:1.11-alpine
@@ -178,9 +178,72 @@ FROM NODE:10-alpine
 WORKDIR /app
 CMD node /app/dist/app.js
 RUN NODE_ENV=production npm ci
-COPY --from=builder /app/dist/ /app/
+COPY --from=builder /app/dist/ /app/dist/
 ```
 
-TODO: common base image for multi-stage build
+In the special case that the builder and runtime image of your app has the same base image and there are steps that are
+common to both the builder and the runtime image, you may create a common base image within your Dockerfile without
+having to manage a separately built and distributed image:
 
-TODO: note about benefits of having more RUN layers for the build image
+```Dockerfile
+FROM node:10 as base
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json /app/
+
+FROM base as builder
+RUN NODE_ENV=development npm ci && npm run build
+
+FROM base
+COPY --from=builder /app/dist/ /app/dist/
+```
+
+When using multi-stage docker builds, the last image will be the result of the `docker build` command and will be
+tagged by the tag specified in the command's options. This, however, does not stop us from creating other images for
+other uses (e.g. running end-to-end tests) after the runtime image has been created. All we have to do is "recreate"
+our runtime image by using the previously built runtime image as a base image:
+
+```Dockerfile
+...
+
+FROM base as runtime
+COPY --from=builder /app/dist/ /app/dist/
+
+FROM builder
+RUN npm run setup-e2e-env && npm run test:e2e
+
+FROM runtime
+```
+
+As stated above, the last built image will be the tagged (if tags were specified) result of the `docker build` command,
+however, every built image, including the intermediates, will be localy available. Now, you may frown at the "waste of
+space" we create, however, this is another thing we may use to our advantage.
+
+One huge disadvantage of end-to-end tests is how unreliable they are in general, producing false negatives here and
+there. This is especially unpleasant if you ran your e2e tests as a part of a single `RUN` directive in your Dockerfile
+along with dependencies installation and building the app - rerunning a CI build pipeline gets quite expensive.
+
+To help the situation, it might be beneficial not to optimize the number of layers of your `builder` image but running
+each command in a separate `RUN` directive in your Dockerfile. Also, if possible, set up your CI to retry a failed CI
+pipeline job on the same worker it ran previously (so that we may utilize the succesfully built layers of the `builder`
+image) for the first re-try only (in case there is an issue with the worker itself **and** you have multiple CI workers
+available).
+
+This way, should our end-to-end tests (or any build command) fail, we may just hit the "retry" button the CI's UI and
+enjoy a huge time savings since no successfully completed work will have to be re-done.
+
+Oh, and the "waste of space" caused by intermediate images? I would recommend setting up a crop script that would
+automatically delete all untagged images older than 2 hours (or any other reasonable amount of time), or clear all the
+untagged images from your CI worker in the final CI stage.
+
+Run the following command to list **all** the untagged docker images:
+
+```bash
+docker images -f “dangling=true” -q
+```
+
+To delete all the untagged images, regardless how old or fresh they are, you may use the following command:
+
+```bash
+docker rmi $(docker images -f “dangling=true” -q)
+```
