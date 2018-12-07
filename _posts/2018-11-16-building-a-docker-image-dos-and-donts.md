@@ -77,7 +77,7 @@ Is everything lost?
 Luckily, no. These components need to be wired over the network, the "hard" part is service discovery. Unfortunately
 there is no easy "one size fits all" solution here, so we'll provide at least some examples:
 
-* If you're running a [Socker Swarm](https://docs.docker.com/engine/swarm/) cloud, you can describe and deploy your
+* If you're running a [Docker Swarm](https://docs.docker.com/engine/swarm/) cloud, you can describe and deploy your
   app using a [docker-compose](https://docs.docker.com/compose/) file.
 * If you are deploying to a
   [Marathon](https://mesosphere.github.io/marathon/)+[Mesos](https://mesos.apache.org/) cloud, you can use a
@@ -87,7 +87,10 @@ there is no easy "one size fits all" solution here, so we'll provide at least so
 * Are you a [Kubernetes](https://kubernetes.io/) (AKA k8s) user? Well, there are several options. A naïve approach
   would be to deploy all containers as a single pod, however, that would suffer from scaling issues described above. A
   better option is to utilize the kubernetes'
-  [service declarations](https://kubernetes.io/docs/concepts/services-networking/service/).
+  [service declarations](https://kubernetes.io/docs/concepts/services-networking/service/). The IP addresses of pods
+  may change as pods die, are revived or moved due to balancing. Services provide stable entry points to your pods via
+  naming. An advanced approach would be to use
+  [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/).
 * For [OpenShift](https://www.openshift.com/) users things are pretty similar to the Kubernetes' users since OpenShift
   is built on top of Kubernetes - use services to set up communication between the containers of your application. Note
   that while services are great for establishing communication pathways between your containers, it is preferable to
@@ -174,7 +177,9 @@ ENV TLD=com \
 
 This, however, is not good enough, simply because we can do a lot better. What we can do is use one image to build our
 app and another to host the built app without the sources or build dependencies. The easiest way to do this is using
-a [multi-stage docker build](https://docs.docker.com/develop/develop-images/multistage-build/):
+a [multi-stage docker build](https://docs.docker.com/develop/develop-images/multistage-build/) (available since Docker
+17.05) or [buildah](https://www.projectatomic.io/blog/2017/06/introducing-buildah/). Let's use docker's multi-stage
+build in our examples:
 
 ```Dockerfile
 FROM node:10 as builder
@@ -337,7 +342,9 @@ just fine-tuning the image's performance and does not have a huge impact on perf
 In case that there is a good reason (and value) in using any of these directives in your Dockerfile (e.g. a container
 you run locally on your machine for development), specify them at the start or your Dockerfile right after the `FROM`
 directive, since these usually change the least often, and combine each to a single use when possible (see the
-supported syntaxes for each directive above).
+supported syntaxes for each directive above). The only exception is the `LABEL` directive, which is usually used to
+contain meta-data that change with every build or quite often - in such a case, place the `LABEL` directive(s) at the
+end of your Dockerfile.
 
 ## Testing your application
 
